@@ -1,0 +1,6 @@
+BRIDGE    NAME      ID      DETAILS
+Bridge A  Bathroom  room-1  children=1, archetype=bathroom
+
+summary: bridges_total=1 bridges_success=1 bridges_failed=0
+
+meta: schema=huectl/v1 command=room list request_id=req-room-1 timestamp=2026-03-05T21:00:00Z bridge_scope=bridge-a partial_success=false duration_ms=19

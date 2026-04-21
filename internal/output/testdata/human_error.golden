@@ -1,0 +1,5 @@
+ERROR [TARGET_AMBIGUOUS] Target name 'Kitchen' matches multiple resources.
+HINT: Use --bridge
+HINT: Use composite id bridge/resource
+
+meta: schema=huectl/v1 command=light set partial_success=true duration_ms=0

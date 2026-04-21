@@ -1,0 +1,21 @@
+services:
+  diyhue:
+    image: diyhue/core:latest
+    restart: unless-stopped
+    environment:
+      IP: 127.0.0.1
+      MAC: aa:bb:cc:dd:ee:ff
+    ports:
+      - "18080:80"
+      - "18443:443"
+    volumes:
+      - diyhue-data:/opt/hue-emulator/export
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/api/config >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  diyhue-data:

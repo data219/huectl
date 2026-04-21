@@ -1,0 +1,208 @@
+version: "3"
+
+silent: false
+
+vars:
+  GO_CMD: go
+  GO_CONTAINER_CMD: /usr/local/go/bin/go
+  BIN_DIR: bin
+  DIST_DIR: dist
+  BINARY: huectl
+  PKG_MAIN: ./cmd/huectl
+  GO_FILES:
+    sh: find . -name '*.go' -type f | tr '\n' ' '
+
+tasks:
+  default:
+    desc: Show task help
+    cmds:
+      - task: help
+
+  help:
+    desc: List available tasks with descriptions
+    cmds:
+      - |
+        cat <<'EOF'
+        Available tasks:
+          default           Show task help
+          help              List available tasks with descriptions
+          doctor            Check tooling and path resolution
+          fmt               Format Go code with gofmt -w
+          fmt-check         Fail if gofmt would change files
+          test              Run go test ./...
+          vet               Run go vet ./...
+          check             Run fmt-check, test, vet
+          build             Build local binary to ./bin/huectl
+          build-linux       Cross-build Linux binaries (amd64, arm64)
+          package-linux     Create dist/huectl-linux-{amd64,arm64}.tar.gz
+          docker-build      Build Docker image huectl:local
+          docker-go-check   Run test/build in golang:1.25 container
+          sim-up            Start diyHue simulator via docker compose
+          sim-down          Stop diyHue simulator and remove volumes
+          test-e2e-sim      Run simulator E2E tests (requires running simulator)
+          ci                Full CI-like checks and artifact build
+          run               Run huectl with ARGS='...'
+          clean             Remove bin/ and dist/
+        EOF
+
+  doctor:
+    desc: Check required tooling and print path resolution
+    cmds:
+      - |
+        set -e
+        echo "Tool checks:"
+        if command -v go >/dev/null 2>&1; then
+          echo "  go:       $(command -v go)"
+          go version
+        else
+          echo "  go:       NOT FOUND"
+        fi
+        if command -v docker >/dev/null 2>&1; then
+          echo "  docker:   $(command -v docker)"
+          docker --version
+        else
+          echo "  docker:   NOT FOUND"
+        fi
+        if command -v task >/dev/null 2>&1; then
+          echo "  task:     $(command -v task)"
+          task --version
+        elif command -v go-task >/dev/null 2>&1; then
+          echo "  go-task:  $(command -v go-task)"
+          go-task --version
+        else
+          echo "  task/go-task: NOT FOUND"
+        fi
+
+  fmt:
+    desc: Format Go files with gofmt -w
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for fmt"
+    cmds:
+      - gofmt -w {{.GO_FILES}}
+
+  fmt-check:
+    desc: Check Go formatting without modifying files
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for fmt-check"
+    cmds:
+      - test -z "$(gofmt -l {{.GO_FILES}})"
+
+  test:
+    desc: Run unit and integration tests
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for test"
+    cmds:
+      - "{{.GO_CMD}} test ./..."
+
+  vet:
+    desc: Run go vet
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for vet"
+    cmds:
+      - "{{.GO_CMD}} vet ./..."
+
+  check:
+    desc: Run formatting check, tests, and vet
+    deps: [fmt-check, test, vet]
+
+  build:
+    desc: Build local huectl binary
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for build"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - "{{.GO_CMD}} build -o {{.BIN_DIR}}/{{.BINARY}} {{.PKG_MAIN}}"
+
+  build-linux:
+    desc: Build Linux binaries for amd64 and arm64
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for build-linux"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 {{.GO_CMD}} build -trimpath -ldflags='-s -w' -o {{.BIN_DIR}}/{{.BINARY}}-linux-amd64 {{.PKG_MAIN}}
+      - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 {{.GO_CMD}} build -trimpath -ldflags='-s -w' -o {{.BIN_DIR}}/{{.BINARY}}-linux-arm64 {{.PKG_MAIN}}
+
+  package-linux:
+    desc: Package Linux binaries into tar.gz archives
+    deps: [build-linux]
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - tar -C {{.BIN_DIR}} -czf {{.DIST_DIR}}/{{.BINARY}}-linux-amd64.tar.gz {{.BINARY}}-linux-amd64
+      - tar -C {{.BIN_DIR}} -czf {{.DIST_DIR}}/{{.BINARY}}-linux-arm64.tar.gz {{.BINARY}}-linux-arm64
+
+  docker-go-check:
+    desc: Run go test/build in golang:1.25 container with explicit go path
+    preconditions:
+      - sh: command -v docker >/dev/null 2>&1
+        msg: "docker is required for docker-go-check"
+    cmds:
+      - docker run --rm -v "$PWD":/src -w /src golang:1.25 sh -lc '{{.GO_CONTAINER_CMD}} test ./... && {{.GO_CONTAINER_CMD}} build -o /tmp/huectl ./cmd/huectl'
+
+  docker-build:
+    desc: Build local Docker image huectl:local
+    preconditions:
+      - sh: command -v docker >/dev/null 2>&1
+        msg: "docker is required for docker-build"
+    cmds:
+      - docker build -t huectl:local .
+
+  sim-up:
+    desc: Start diyHue simulator with docker compose
+    preconditions:
+      - sh: command -v docker >/dev/null 2>&1
+        msg: "docker is required for sim-up"
+    cmds:
+      - docker compose -f test/simulator/compose.yml up -d --wait
+
+  sim-down:
+    desc: Stop diyHue simulator and remove volumes
+    preconditions:
+      - sh: command -v docker >/dev/null 2>&1
+        msg: "docker is required for sim-down"
+    cmds:
+      - docker compose -f test/simulator/compose.yml down -v --remove-orphans
+
+  test-e2e-sim:
+    desc: Run simulator E2E tests
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for test-e2e-sim"
+      - sh: command -v docker >/dev/null 2>&1
+        msg: "docker is required for test-e2e-sim"
+    cmds:
+      - HUECTL_SIM_REQUIRED=1 {{.GO_CMD}} test ./test/e2e/simulator -v
+
+  ci:
+    desc: Run full CI-like validation and build flow
+    cmds:
+      - task: check
+      - task: docker-go-check
+      - task: build-linux
+      - task: package-linux
+      - task: docker-build
+      - |
+        set -e
+        trap 'docker compose -f test/simulator/compose.yml down -v --remove-orphans' EXIT
+        docker compose -f test/simulator/compose.yml up -d --wait
+        HUECTL_SIM_REQUIRED=1 {{.GO_CMD}} test ./test/e2e/simulator -v
+
+  run:
+    desc: Run huectl with ARGS='...'
+    preconditions:
+      - sh: command -v go >/dev/null 2>&1
+        msg: "go is required for run"
+    vars:
+      RUN_ARGS: '{{default "" .ARGS}}'
+    cmds:
+      - "{{.GO_CMD}} run {{.PKG_MAIN}} {{.RUN_ARGS}}"
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf {{.BIN_DIR}} {{.DIST_DIR}}

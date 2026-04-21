@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          test -z "$(gofmt -l $(find . -name '*.go' -type f))"
+
+      - name: Run tests
+        run: go test ./...
+
+  simulator-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Start diyHue simulator
+        run: docker compose -f test/simulator/compose.yml up -d --wait
+
+      - name: Run simulator E2E tests
+        run: HUECTL_SIM_REQUIRED=1 go test ./test/e2e/simulator -v
+
+      - name: Collect simulator diagnostics
+        if: failure()
+        run: |
+          mkdir -p artifacts
+          docker compose -f test/simulator/compose.yml ps > artifacts/compose-ps.txt
+          docker compose -f test/simulator/compose.yml logs --no-color > artifacts/compose-logs.txt || true
+
+      - name: Upload simulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-diagnostics
+          path: artifacts
+
+      - name: Stop diyHue simulator
+        if: always()
+        run: docker compose -f test/simulator/compose.yml down -v --remove-orphans
+
+  build-binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Build binary
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags='-s -w' -o dist/huectl-linux-${{ matrix.goarch }} ./cmd/huectl
+          tar -C dist -czf dist/huectl-linux-${{ matrix.goarch }}.tar.gz huectl-linux-${{ matrix.goarch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: huectl-linux-${{ matrix.goarch }}
+          path: dist/huectl-linux-${{ matrix.goarch }}.tar.gz
+
+  build-container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          platforms: linux/amd64,linux/arm64
+          tags: huectl:ci

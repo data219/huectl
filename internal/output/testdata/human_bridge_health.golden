@@ -1,0 +1,5 @@
+BRIDGE    STATUS  HTTP  DETAILS
+Bridge A  OK      200   source=v2
+Bridge B  ERR     503   BRIDGE_REQUEST: timeout
+
+meta: schema=huectl/v1 command=bridge health partial_success=true duration_ms=0
