@@ -14,10 +14,10 @@ type RenderOptions struct {
 
 type AggregateView struct {
 	HasResourcePayload bool                  `json:"-"`
-	ResourceRows []map[string]any      `json:"resource_rows,omitempty"`
-	BridgeRows   []domain.BridgeResult `json:"bridge_rows,omitempty"`
-	BridgeErrors []domain.BridgeResult `json:"bridge_errors,omitempty"`
-	Summary      map[string]any        `json:"summary,omitempty"`
+	ResourceRows       []map[string]any      `json:"resource_rows,omitempty"`
+	BridgeRows         []domain.BridgeResult `json:"bridge_rows,omitempty"`
+	BridgeErrors       []domain.BridgeResult `json:"bridge_errors,omitempty"`
+	Summary            map[string]any        `json:"summary,omitempty"`
 }
 
 type ViewEnvelope struct {
